@@ -1,0 +1,29 @@
+# On a tag (git tag v1 && git push origin v1): build the bot, attach the module to a release, and
+# put the bots.json entry for it in the release notes, ready to paste into a pull request to
+# https://github.com/collinjackson/libaw-arena.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - run: ./build.sh
+      - name: Release with the module and its entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          NAME=$(basename "$GITHUB_REPOSITORY" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_\n-' '-' | cut -c1-32)
+          cp target/wasm32-unknown-unknown/release/*.wasm "$NAME.wasm"
+          SHA=$(sha256sum "$NAME.wasm" | cut -d' ' -f1)
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$NAME.wasm"
+          jq -n --arg n "$NAME" --arg r "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --arg c "$GITHUB_SHA" --arg w "$URL" --arg s "$SHA" \
+            '{name: $n, repo: $r, commit: $c, wasm: $w, sha256: $s}' > entry.json
+          { echo "Entry for bots.json:"; echo; echo '```json'; cat entry.json; echo '```'; } > notes.md
+          gh release create "$TAG" "$NAME.wasm" --notes-file notes.md

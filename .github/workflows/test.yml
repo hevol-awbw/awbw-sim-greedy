@@ -1,0 +1,53 @@
+# Plays this bot against libaw-arena's example bots in every mode, from both seats, and verifies every game.
+name: test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the bot
+        run: rustup toolchain install && ./build.sh
+      - uses: actions/checkout@v4
+        with:
+          repository: collinjackson/libaw-arena
+          path: arena
+      - name: Build the referee and the example bots
+        working-directory: arena
+        run: |
+          rustup toolchain install
+          cargo build --release --locked
+          python3 scripts/build_registry.py --only random,greedy,baseline,hinted
+      - name: Play
+        working-directory: arena
+        run: |
+          BOT=$(ls ../target/wasm32-unknown-unknown/release/*.wasm)
+          mkdir -p out
+          for m in $(jq -r '.[].name' modes.json); do
+            for o in random greedy baseline hinted; do
+              ./target/release/arena play --map maps/skirmish.json --mode "$m" --seed 1 --bot "awbw=$BOT" --bot "$o=bots/out/$o.wasm" --out "out/$m-$o-first.json"
+              ./target/release/arena play --map maps/skirmish.json --mode "$m" --seed 2 --bot "$o=bots/out/$o.wasm" --bot "awbw=$BOT" --out "out/$m-$o-second.json"
+            done
+          done
+          for f in out/*.json; do ./target/release/arena verify "$f"; done
+      - name: Summary
+        working-directory: arena
+        run: |
+          python3 - <<'PY'
+          import glob, json
+          for f in sorted(glob.glob("out/*.json")):
+              g = json.load(open(f))
+              keys = {k: g[k] for k in g if k in ("result", "winner", "strikes", "days", "day")}
+              print(f, json.dumps(keys)[:400])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: games
+          path: arena/out/

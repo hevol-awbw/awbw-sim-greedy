@@ -1,0 +1,16 @@
+[package]
+name = "awbw-sim-greedy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The arena's Rust SDK, pinned to a commit so your module rebuilds the same.
+arena-bot = { git = "https://github.com/collinjackson/libaw-arena", rev = "9aa63a4dde86cb5f46e51754ffa886aeb7de0b61" }
+
+[profile.release]
+opt-level = "s"
+lto = true
